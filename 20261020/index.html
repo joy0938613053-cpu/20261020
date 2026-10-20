@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>食物連連看 大挑戰 (Food Match Drag Quiz)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- p5.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Noto+Sans+TC:wght@400;700;900&display=swap');
+
+        body {
+            font-family: 'Fredoka', 'Noto Sans TC', sans-serif;
+            background: radial-gradient(circle at top left, #fef3c7, #fed7aa, #fde68a);
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+            overflow-x: hidden;
+        }
+
+        #canvas-wrapper {
+            position: relative;
+            width: 100%;
+            max-width: 960px;
+            margin: 0 auto;
+            border-radius: 2rem;
+            box-shadow: 0 25px 50px -12px rgba(180, 83, 9, 0.25);
+            background-color: #ffffff;
+            border: 4px solid #f2994a;
+            overflow: hidden;
+        }
+
+        #canvas-container {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        canvas {
+            display: block;
+            touch-action: none;
+        }
+
+        /* Decorative GIF overlay positions */
+        .gif-decor {
+            position: absolute;
+            pointer-events: none;
+            z-index: 10;
+            opacity: 0.85;
+            width: 52px;
+            height: 52px;
+        }
+        .gif-top-left { top: 12px; left: 16px; }
+        .gif-top-right { top: 12px; right: 16px; }
+        .gif-bottom-left { bottom: 12px; left: 16px; }
+        .gif-bottom-right { bottom: 12px; right: 16px; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between items-center p-3 sm:p-5">
+
+    <!-- Header -->
+    <header class="text-center my-2 sm:my-3">
+        <h1 class="text-3xl sm:text-4xl font-black text-amber-900 tracking-wider drop-shadow-sm flex items-center justify-center gap-2">
+            <span>✨</span> 食物連連看 大挑戰 <span>✨</span>
+        </h1>
+        <p class="text-amber-800 text-sm sm:text-base mt-1 font-bold">
+            將下方中文/英文文字卡拖曳至上方對應的搖擺食物圖鑑！
+        </p>
+    </header>
+
+    <!-- Canvas & GIF Decor Container -->
+    <main class="w-full flex-grow flex justify-center items-center py-1">
+        <div id="canvas-wrapper">
+            <!-- Decorative Animated GIF Accents around corners -->
+            <img src="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM3hhdXpuaG0xcGVkNDBveHJ4bzRneXhhZnprbjE2YmxldWZ3cml1byZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/L33oAunA45rBmsi3nQ/giphy.gif" class="gif-decor gif-top-left" alt="decor">
+            <img src="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExdzdzZ2UzaWRndnpvbXZxNmE4ZzFsdXNmbnNmNWJ0NG0ybjFucThqYiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/XD9fUu6PjWkPOfi3w7/giphy.gif" class="gif-decor gif-top-right" alt="decor">
+            <img src="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExdm4yMzRwMGk1dG0yc3ZnbGVzOHB6Nm40eTdybnlyOW96NmgzbWk2YSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/13OZN8XfG917iM/giphy.gif" class="gif-decor gif-bottom-left" alt="decor">
+            <img src="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExandubWJucXZoc2p2czc4ZnFydGZsa21mbHRubnl5cnE3cXdxZmE4MSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/S99qIeR8396g1b2gD2/giphy.gif" class="gif-decor gif-bottom-right" alt="decor">
+
+            <div id="canvas-container"></div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="text-center text-xs font-semibold text-amber-800/80 my-2">
+        <p>🎨 動態搖擺插畫 • 3題(共9組配對) • 純文字無圖提示測驗 • 延遲結算成績</p>
+    </footer>
+
+    <script>
+        // --- WEBAUDIO SYNTHESIZER FOR SOUND EFFECTS ---
+        const SoundFX = {
+            ctx: null,
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            },
+            playCorrect() {
+                this.init();
+                const now = this.ctx.currentTime;
+                [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+                    gain.gain.setValueAtTime(0.2, now + idx * 0.08);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.35);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + idx * 0.08);
+                    osc.stop(now + idx * 0.08 + 0.35);
+                });
+            },
+            playWrong() {
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(260, now);
+                osc.frequency.linearRampToValueAtTime(140, now + 0.25);
+                gain.gain.setValueAtTime(0.22, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            },
+            playClick() {
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(450, now);
+                osc.frequency.exponentialRampToValueAtTime(220, now + 0.06);
+                gain.gain.setValueAtTime(0.18, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.06);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.06);
+            }
+        };
+
+        // --- 15 FOOD ITEM BANK WITH VECTOR DRAWING LOGIC ---
+        const FOOD_BANK = [
+            { id: 1, nameZh: "蘋果", nameEn: "Apple", draw: drawApple },
+            { id: 2, nameZh: "漢堡", nameEn: "Hamburger", draw: drawHamburger },
+            { id: 3, nameZh: "壽司", nameEn: "Sushi", draw: drawSushi },
+            { id: 4, nameZh: "披薩", nameEn: "Pizza", draw: drawPizza },
+            { id: 5, nameZh: "珍珠奶茶", nameEn: "Bubble Tea", draw: drawBubbleTea },
+            { id: 6, nameZh: "拉麵", nameEn: "Ramen", draw: drawRamen },
+            { id: 7, nameZh: "薯條", nameEn: "French Fries", draw: drawFries },
+            { id: 8, nameZh: "甜甜圈", nameEn: "Donut", draw: drawDonut },
+            { id: 9, nameZh: "冰淇淋", nameEn: "Ice Cream", draw: drawIceCream },
+            { id: 10, nameZh: "牛排", nameEn: "Steak", draw: drawSteak },
+            { id: 11, nameZh: "飯糰", nameEn: "Rice Ball", draw: drawRiceBall },
+            { id: 12, nameZh: "鬆餅", nameEn: "Pancake", draw: drawPancake },
+            { id: 13, nameZh: "熱狗", nameEn: "Hot Dog", draw: drawHotDog },
+            { id: 14, nameZh: "塔可", nameEn: "Taco", draw: drawTaco },
+            { id: 15, nameZh: "酪梨", nameEn: "Avocado", draw: drawAvocado }
+        ];
+
+        // --- GAME SYSTEM VARIABLES ---
+        let gameState = 'START'; // 'START', 'PLAY', 'RESULT'
+        let currentQuestion = 1;
+        const TOTAL_QUESTIONS = 3;
+        const TARGETS_PER_QUESTION = 3;
+        const OPTIONS_PER_QUESTION = 6;
+
+        let gameQuestionsData = []; // Configuration for 3 questions
+        let targetSlots = [];       // Top 3 target food slots
+        let draggableCards = [];    // Bottom 6 draggable text cards
+        let draggedCard = null;
+        let quizHistory = [];       // History for final summary screen
+
+        let sparkles = [];
+
+        // --- PROCEDURAL VECTOR FOOD ILLUSTRATIONS ---
+        function drawApple(x, y, s) {
+            push(); translate(x, y);
+            stroke(101, 67, 33); strokeWeight(s*0.06); line(0, -s*0.2, 0, -s*0.4);
+            fill(76, 175, 80); noStroke(); ellipse(s*0.12, -s*0.35, s*0.25, s*0.15);
+            fill(239, 68, 68); stroke(185, 28, 28); strokeWeight(s*0.04);
+            ellipse(-s*0.15, 0, s*0.45, s*0.55); ellipse(s*0.15, 0, s*0.45, s*0.55);
+            fill(255, 255, 255, 180); noStroke(); ellipse(-s*0.18, -s*0.12, s*0.1, s*0.18);
+            pop();
+        }
+
+        function drawHamburger(x, y, s) {
+            push(); translate(x, y);
+            fill(217, 119, 6); stroke(180, 83, 9); strokeWeight(s*0.04);
+            rect(-s*0.35, s*0.12, s*0.7, s*0.18, s*0.08);
+            fill(120, 53, 15); noStroke(); rect(-s*0.38, s*0.02, s*0.76, s*0.12, s*0.04);
+            fill(251, 191, 36); triangle(-s*0.35, s*0.02, s*0.35, s*0.02, 0, s*0.15);
+            fill(34, 197, 94); rect(-s*0.38, -s*0.06, s*0.76, s*0.08, s*0.04);
+            fill(245, 158, 11); stroke(180, 83, 9); strokeWeight(s*0.04);
+            arc(0, -s*0.06, s*0.72, s*0.45, PI, 0, CHORD);
+            fill(255); noStroke(); ellipse(-s*0.12, -s*0.18, s*0.04, s*0.06); ellipse(s*0.12, -s*0.18, s*0.04, s*0.06);
+            pop();
+        }
+
+        function drawSushi(x, y, s) {
+            push(); translate(x, y);
+            fill(248, 250, 252); stroke(203, 213, 225); strokeWeight(s*0.03);
+            rect(-s*0.3, -s*0.1, s*0.6, s*0.3, s*0.1);
+            fill(248, 113, 113); stroke(220, 38, 38); strokeWeight(s*0.03);
+            rect(-s*0.35, -s*0.25, s*0.7, s*0.2, s*0.08);
+            stroke(255); strokeWeight(s*0.02);
+            line(-s*0.2, -s*0.24, -s*0.1, -s*0.06); line(0, -s*0.24, s*0.1, -s*0.06); line(s*0.15, -s*0.24, s*0.25, -s*0.06);
+            fill(15, 23, 42); noStroke(); rect(-s*0.08, -s*0.26, s*0.16, s*0.46, s*0.02);
+            pop();
+        }
+
+        function drawPizza(x, y, s) {
+            push(); translate(x, y);
+            fill(217, 119, 6); stroke(180, 83, 9); strokeWeight(s*0.04);
+            arc(0, 0, s*0.8, s*0.8, -QUARTER_PI, -PI + QUARTER_PI, PIE);
+            fill(251, 191, 36); noStroke();
+            arc(0, 0, s*0.68, s*0.68, -QUARTER_PI, -PI + QUARTER_PI, PIE);
+            fill(220, 38, 38); ellipse(-s*0.1, -s*0.1, s*0.12, s*0.12); ellipse(-s*0.22, -s*0.02, s*0.1, s*0.1); ellipse(-s*0.08, s*0.15, s*0.11, s*0.11);
+            pop();
+        }
+
+        function drawBubbleTea(x, y, s) {
+            push(); translate(x, y);
+            stroke(239, 68, 68); strokeWeight(s*0.06); line(0, -s*0.4, s*0.1, s*0.3);
+            fill(255, 255, 255, 200); stroke(203, 213, 225); strokeWeight(s*0.03);
+            quad(-s*0.25, -s*0.25, s*0.25, -s*0.25, s*0.18, s*0.35, -s*0.18, s*0.35);
+            fill(217, 119, 6); noStroke();
+            quad(-s*0.23, -s*0.15, s*0.23, -s*0.15, s*0.18, s*0.35, -s*0.18, s*0.35);
+            fill(30, 41, 59); ellipse(-s*0.08, s*0.25, s*0.08, s*0.08); ellipse(s*0.06, s*0.28, s*0.08, s*0.08); ellipse(0, s*0.18, s*0.08, s*0.08);
+            pop();
+        }
+
+        function drawRamen(x, y, s) {
+            push(); translate(x, y);
+            fill(225, 29, 72); stroke(159, 18, 57); strokeWeight(s*0.04);
+            arc(0, 0, s*0.75, s*0.5, 0, PI, CHORD);
+            fill(251, 191, 36); noStroke(); ellipse(0, 0, s*0.7, s*0.18);
+            fill(255); ellipse(-s*0.12, -s*0.02, s*0.18, s*0.14);
+            fill(245, 158, 11); ellipse(-s*0.12, -s*0.02, s*0.1, s*0.08);
+            stroke(120, 53, 15); strokeWeight(s*0.04);
+            line(-s*0.3, -s*0.3, s*0.25, -s*0.05); line(-s*0.3, -s*0.22, s*0.25, -s*0.02);
+            pop();
+        }
+
+        function drawFries(x, y, s) {
+            push(); translate(x, y);
+            fill(220, 38, 38); stroke(185, 28, 28); strokeWeight(s*0.03);
+            quad(-s*0.25, -s*0.05, s*0.25, -s*0.05, s*0.2, s*0.35, -s*0.2, s*0.35);
+            fill(251, 191, 36); noStroke();
+            rect(-s*0.18, -s*0.35, s*0.07, s*0.32, s*0.02);
+            rect(-s*0.08, -s*0.4, s*0.07, s*0.37, s*0.02);
+            rect(0.02, -s*0.33, s*0.07, s*0.3, s*0.02);
+            rect(s*0.11, -s*0.38, s*0.07, s*0.35, s*0.02);
+            stroke(255); strokeWeight(s*0.03); noFill(); arc(0, s*0.12, s*0.15, s*0.1, 0, PI);
+            pop();
+        }
+
+        function drawDonut(x, y, s) {
+            push(); translate(x, y);
+            fill(217, 119, 6); stroke(180, 83, 9); strokeWeight(s*0.03); ellipse(0, 0, s*0.65, s*0.65);
+            fill(244, 114, 182); noStroke(); ellipse(0, 0, s*0.56, s*0.56);
+            fill(255); stroke(180, 83, 9); strokeWeight(s*0.03); ellipse(0, 0, s*0.22, s*0.22);
+            noStroke(); fill(59, 130, 246); rect(-s*0.15, -s*0.15, s*0.08, s*0.03, s*0.01);
+            fill(34, 197, 94); rect(s*0.08, -s*0.12, s*0.03, s*0.08, s*0.01);
+            fill(251, 191, 36); rect(-s*0.12, s*0.1, s*0.08, s*0.03, s*0.01);
+            pop();
+        }
+
+        function drawIceCream(x, y, s) {
+            push(); translate(x, y);
+            fill(217, 119, 6); stroke(180, 83, 9); strokeWeight(s*0.03);
+            triangle(-s*0.2, -s*0.05, s*0.2, -s*0.05, 0, s*0.4);
+            fill(253, 164, 175); noStroke(); ellipse(0, -s*0.08, s*0.45, s*0.25);
+            fill(147, 197, 253); ellipse(0, -s*0.18, s*0.38, s*0.22);
+            fill(254, 240, 138); ellipse(0, -s*0.28, s*0.28, s*0.2);
+            fill(225, 29, 72); ellipse(0, -s*0.38, s*0.12, s*0.12);
+            pop();
+        }
+
+        function drawSteak(x, y, s) {
+            push(); translate(x, y);
+            fill(159, 18, 57); stroke(136, 19, 55); strokeWeight(s*0.04);
+            beginShape(); vertex(-s*0.35, -s*0.15); bezierVertex(-s*0.2, -s*0.35, s*0.2, -s*0.35, s*0.35, -s*0.1);
+            bezierVertex(s*0.4, s*0.2, s*0.1, s*0.35, -s*0.2, s*0.25); bezierVertex(-s*0.4, s*0.2, -s*0.4, -s*0.05, -s*0.35, -s*0.15);
+            endShape(CLOSE);
+            fill(254, 242, 242); noStroke(); ellipse(-s*0.05, -s*0.05, s*0.12, s*0.18);
+            stroke(88, 28, 28); strokeWeight(s*0.03); line(-s*0.2, -s*0.1, s*0.1, -s*0.2); line(-s*0.1, s*0.1, s*0.2, 0);
+            pop();
+        }
+
+        function drawRiceBall(x, y, s) {
+            push(); translate(x, y);
+            fill(255); stroke(226, 232, 240); strokeWeight(s*0.04);
+            beginShape(); vertex(0, -s*0.35); bezierVertex(s*0.3, -s*0.1, s*0.35, s*0.2, s*0.28, s*0.28);
+            bezierVertex(0, s*0.35, -s*0.28, s*0.35, -s*0.28, s*0.28); bezierVertex(-s*0.35, s*0.2, -s*0.3, -s*0.1, 0, -s*0.35);
+            endShape(CLOSE);
+            fill(15, 23, 42); noStroke(); rect(-s*0.12, s*0.02, s*0.24, s*0.26, s*0.02);
+            pop();
+        }
+
+        function drawPancake(x, y, s) {
+            push(); translate(x, y);
+            fill(245, 158, 11); stroke(180, 83, 9); strokeWeight(s*0.03);
+            ellipse(0, s*0.15, s*0.65, s*0.2); ellipse(0, 0, s*0.65, s*0.2); ellipse(0, -s*0.15, s*0.65, s*0.2);
+            fill(254, 240, 138); stroke(234, 179, 8); strokeWeight(s*0.02); rect(-s*0.08, -s*0.28, s*0.16, s*0.12, s*0.02);
+            pop();
+        }
+
+        function drawHotDog(x, y, s) {
+            push(); translate(x, y);
+            fill(245, 158, 11); stroke(180, 83, 9); strokeWeight(s*0.03); rect(-s*0.38, -s*0.15, s*0.76, s*0.3, s*0.15);
+            fill(225, 29, 72); stroke(159, 18, 57); strokeWeight(s*0.03); rect(-s*0.42, -s*0.08, s*0.84, s*0.16, s*0.08);
+            stroke(253, 224, 71); strokeWeight(s*0.04); noFill();
+            beginShape(); curveVertex(-s*0.35, 0); curveVertex(-s*0.3, -s*0.04); curveVertex(-s*0.15, s*0.04);
+            curveVertex(0, -s*0.04); curveVertex(s*0.15, s*0.04); curveVertex(s*0.3, -s*0.04); curveVertex(s*0.35, 0); endShape();
+            pop();
+        }
+
+        function drawTaco(x, y, s) {
+            push(); translate(x, y);
+            fill(251, 191, 36); stroke(217, 119, 6); strokeWeight(s*0.04); arc(0, 0, s*0.75, s*0.55, 0, PI, CHORD);
+            fill(120, 53, 15); noStroke(); ellipse(-s*0.1, -s*0.02, s*0.15, s*0.08);
+            fill(34, 197, 94); ellipse(s*0.1, -s*0.02, s*0.15, s*0.08);
+            fill(239, 68, 68); ellipse(0, -s*0.05, s*0.1, s*0.1);
+            pop();
+        }
+
+        function drawAvocado(x, y, s) {
+            push(); translate(x, y);
+            fill(20, 83, 45); stroke(22, 101, 52); strokeWeight(s*0.03); ellipse(0, 0, s*0.5, s*0.65);
+            fill(187, 247, 208); noStroke(); ellipse(0, 0, s*0.42, s*0.56);
+            fill(120, 53, 15); stroke(67, 20, 7); strokeWeight(s*0.03); ellipse(0, s*0.1, s*0.22, s*0.25);
+            pop();
+        }
+
+        // --- P5.JS SETUP ---
+        function setup() {
+            const container = document.getElementById('canvas-container');
+            const canvasWidth = Math.min(container.clientWidth, 960);
+            const canvasHeight = Math.round(canvasWidth * 0.65);
+
+            const canvas = createCanvas(canvasWidth, canvasHeight);
+            canvas.parent('canvas-container');
+
+            textFont('Fredoka, "Noto Sans TC", sans-serif');
+
+            for (let i = 0; i < 18; i++) {
+                sparkles.push({
+                    x: random(width),
+                    y: random(height),
+                    size: random(4, 8),
+                    speed: random(0.2, 0.6)
+                });
+            }
+        }
+
+        // --- START GAME SETUP ---
+        function startNewGame() {
+            gameState = 'PLAY';
+            currentQuestion = 1;
+            quizHistory = [];
+            gameQuestionsData = [];
+
+            let remainingPool = shuffleArray([...FOOD_BANK]);
+
+            for (let q = 0; q < TOTAL_QUESTIONS; q++) {
+                // Pick 3 target items for this question
+                let targets = remainingPool.splice(0, TARGETS_PER_QUESTION);
+
+                // Pick 3 distractor items from the remaining bank
+                let otherBank = FOOD_BANK.filter(f => !targets.some(t => t.id === f.id));
+                let distractors = shuffleArray(otherBank).slice(0, 3);
+
+                // Combine 3 correct + 3 distractors = 6 draggable text options
+                let options = shuffleArray([...targets, ...distractors]);
+
+                gameQuestionsData.push({
+                    targets: targets,
+                    options: options
+                });
+            }
+
+            initQuestion(currentQuestion);
+        }
+
+        // --- INIT QUESTION LAYOUT ---
+        function initQuestion(qNum) {
+            let qData = gameQuestionsData[qNum - 1];
+
+            targetSlots = [];
+            draggableCards = [];
+
+            // Top 3 Target Food Slots
+            const targetW = width * 0.26;
+            const targetH = height * 0.35;
+            const targetGap = width * 0.04;
+            const targetStartX = (width - (TARGETS_PER_QUESTION * targetW + (TARGETS_PER_QUESTION - 1) * targetGap)) / 2;
+            const targetY = height * 0.16;
+
+            for (let i = 0; i < TARGETS_PER_QUESTION; i++) {
+                let x = targetStartX + i * (targetW + targetGap);
+                targetSlots.push({
+                    id: qData.targets[i].id,
+                    foodData: qData.targets[i],
+                    x: x,
+                    y: targetY,
+                    w: targetW,
+                    h: targetH,
+                    assignedCardId: null,
+                    phaseOffset: i * 1.5 // staggered wiggle phase
+                });
+            }
+
+            // Bottom 6 Text Draggable Cards (2 Rows of 3)
+            const cardW = width * 0.28;
+            const cardH = height * 0.11;
+            const cardGapX = width * 0.03;
+            const cardGapY = height * 0.03;
+            const cardStartX = (width - (3 * cardW + 2 * cardGapX)) / 2;
+            const cardStartY = height * 0.58;
+
+            for (let i = 0; i < OPTIONS_PER_QUESTION; i++) {
+                let col = i % 3;
+                let row = Math.floor(i / 3);
+                let x = cardStartX + col * (cardW + cardGapX);
+                let y = cardStartY + row * (cardH + cardGapY);
+
+                draggableCards.push({
+                    id: qData.options[i].id,
+                    foodData: qData.options[i],
+                    homeX: x,
+                    homeY: y,
+                    x: x,
+                    y: y,
+                    w: cardW,
+                    h: cardH,
+                    isDragging: false,
+                    targetSlot: null
+                });
+            }
+        }
+
+        // --- MAIN DRAW LOOP ---
+        function draw() {
+            background(255, 251, 235);
+
+            // Floating background sparkles
+            noStroke();
+            fill(251, 191, 36, 120);
+            for (let s of sparkles) {
+                s.y -= s.speed;
+                if (s.y < 0) s.y = height;
+                ellipse(s.x, s.y, s.size, s.size);
+            }
+
+            if (gameState === 'START') {
+                drawStartScreen();
+            } else if (gameState === 'PLAY') {
+                drawPlayScreen();
+            } else if (gameState === 'RESULT') {
+                drawResultScreen();
+            }
+        }
+
+        // --- COVER / START SCREEN (標題頁面) ---
+        function drawStartScreen() {
+            push();
+            textAlign(CENTER, CENTER);
+
+            // Main Frame
+            fill(255);
+            stroke(245, 158, 11);
+            strokeWeight(4);
+            rect(width * 0.06, height * 0.08, width * 0.88, height * 0.84, 28);
+
+            // Wiggling Header Artwork on Start Screen
+            let wiggle1 = sin(frameCount * 0.08) * 0.1;
+            let wiggle2 = cos(frameCount * 0.08) * 0.1;
+
+            push();
+            translate(width * 0.18, height * 0.28);
+            rotate(wiggle1);
+            drawHamburger(0, 0, width * 0.12);
+            pop();
+
+            push();
+            translate(width * 0.82, height * 0.28);
+            rotate(wiggle2);
+            drawPizza(0, 0, width * 0.12);
+            pop();
+
+            // Title
+            fill(180, 83, 9);
+            textSize(width * 0.052);
+            textStyle(BOLD);
+            text("🍱 食物連連看 大挑戰 🥑", width / 2, height * 0.24);
+
+            // Game Instructions
+            fill(120, 53, 15);
+            textSize(width * 0.024);
+            textStyle(NORMAL);
+            text("【 遊戲規則說明 】", width / 2, height * 0.38);
+            text("1. 共 3 題測驗，每題有 3 個上方搖擺食物圖鑑", width / 2, height * 0.45);
+            text("2. 將下方 6 個【純文字選項卡】拖曳至相對應的圖案", width / 2, height * 0.51);
+            text("3. 作答過程中不提示對錯，完成所有題目後結算成績！", width / 2, height * 0.57);
+
+            // Start Button
+            let btnW = width * 0.34;
+            let btnH = height * 0.13;
+            let btnX = width / 2 - btnW / 2;
+            let btnY = height * 0.68;
+
+            let isHover = mouseX > btnX && mouseX < btnX + btnW &&
+                          mouseY > btnY && mouseY < btnY + btnH;
+
+            fill(isHover ? 217 : 245, isHover ? 119 : 158, isHover ? 6 : 11);
+            stroke(180, 83, 9);
+            strokeWeight(3.5);
+            rect(btnX, btnY, btnW, btnH, 22);
+
+            fill(255);
+            noStroke();
+            textSize(width * 0.034);
+            textStyle(BOLD);
+            text("開始遊戲 Start Game 🚀", width / 2, btnY + btnH / 2);
+
+            pop();
+        }
+
+        // --- QUIZ SCREEN (PLAY) ---
+        function drawPlayScreen() {
+            // Header Info Bar
+            push();
+            fill(254, 215, 170);
+            noStroke();
+            rect(0, 0, width, height * 0.12);
+
+            fill(180, 83, 9);
+            textAlign(LEFT, CENTER);
+            textSize(width * 0.028);
+            textStyle(BOLD);
+            text(`🎯 第 ${currentQuestion} / ${TOTAL_QUESTIONS} 題`, width * 0.05, height * 0.06);
+
+            // Progress Bar
+            let pW = width * 0.35;
+            let pH = 14;
+            let pX = width * 0.6;
+            let pY = height * 0.06 - pH / 2;
+
+            fill(255);
+            rect(pX, pY, pW, pH, 8);
+            fill(234, 88, 12);
+            rect(pX, pY, pW * (currentQuestion / TOTAL_QUESTIONS), pH, 8);
+            pop();
+
+            // 1. Draw Upper Target Cards with Wiggling Animation (晃動效果)
+            for (let slot of targetSlots) {
+                push();
+                translate(slot.x + slot.w / 2, slot.y + slot.h / 2);
+
+                // Calculate gentle sine-wave wiggling/shaking angle
+                let wiggleAngle = sin(frameCount * 0.06 + slot.phaseOffset) * 0.07;
+                let bounceY = cos(frameCount * 0.08 + slot.phaseOffset) * 3;
+                rotate(wiggleAngle);
+
+                // Slot Base Card
+                fill(255);
+                stroke(251, 191, 36);
+                strokeWeight(2.5);
+                rect(-slot.w / 2, -slot.h / 2 + bounceY, slot.w, slot.h, 16);
+
+                // Render Wiggling Food Vector Illustration
+                slot.foodData.draw(0, -slot.h * 0.12 + bounceY, slot.w * 0.65);
+
+                // Drop Slot Placeholder Text
+                fill(254, 243, 199);
+                stroke(245, 158, 11);
+                strokeWeight(1.5);
+                rect(-slot.w / 2 + 6, slot.h / 2 - 32 + bounceY, slot.w - 12, 26, 8);
+
+                fill(180, 83, 9);
+                noStroke();
+                textAlign(CENTER, CENTER);
+                textSize(width * 0.016);
+                textStyle(BOLD);
+                text("拖曳文字卡至此", 0, slot.h / 2 - 19 + bounceY);
+
+                pop();
+            }
+
+            // 2. Connector lines for placed text cards
+            for (let card of draggableCards) {
+                if (card.targetSlot) {
+                    push();
+                    stroke(234, 88, 12);
+                    strokeWeight(3);
+                    drawingContext.setLineDash([6, 6]);
+                    line(card.x + card.w / 2, card.y + card.h / 2,
+                         card.targetSlot.x + card.targetSlot.w / 2, card.targetSlot.y + card.targetSlot.h);
+                    pop();
+                }
+            }
+
+            // 3. Render Draggable TEXT-ONLY Cards (選項不可有圖片)
+            for (let card of draggableCards) {
+                if (card !== draggedCard) {
+                    drawTextOnlyOptionCard(card);
+                }
+            }
+            if (draggedCard) {
+                drawTextOnlyOptionCard(draggedCard);
+            }
+
+            // 4. Submit / Next Button
+            let assignedCount = draggableCards.filter(c => c.targetSlot !== null).length;
+            let readyToSubmit = (assignedCount === TARGETS_PER_QUESTION);
+
+            push();
+            let btnW = width * 0.32;
+            let btnH = height * 0.09;
+            let btnX = width / 2 - btnW / 2;
+            let btnY = height * 0.88;
+
+            if (readyToSubmit) {
+                fill(34, 197, 94);
+                stroke(21, 128, 61);
+            } else {
+                fill(203, 213, 225);
+                stroke(148, 163, 184);
+            }
+            strokeWeight(3);
+            rect(btnX, btnY, btnW, btnH, 16);
+
+            fill(readyToSubmit ? 255 : 100);
+            noStroke();
+            textAlign(CENTER, CENTER);
+            textSize(width * 0.024);
+            textStyle(BOLD);
+            let btnText = (currentQuestion < TOTAL_QUESTIONS) ? "下一題 ➔" : "查看連線成績 🏆";
+            text(btnText, btnX + btnW / 2, btnY + btnH / 2);
+            pop();
+        }
+
+        // TEXT-ONLY Option Card Component (嚴格去除任何圖片/emoji)
+        function drawTextOnlyOptionCard(card) {
+            push();
+            if (card.isDragging) {
+                stroke(234, 88, 12);
+                strokeWeight(3.5);
+                fill(254, 243, 199);
+                drawingContext.shadowBlur = 12;
+                drawingContext.shadowColor = 'rgba(234, 88, 12, 0.4)';
+            } else if (card.targetSlot) {
+                stroke(245, 158, 11);
+                strokeWeight(2.5);
+                fill(255, 251, 235);
+            } else {
+                stroke(203, 213, 225);
+                strokeWeight(2);
+                fill(255);
+            }
+
+            rect(card.x, card.y, card.w, card.h, 12);
+            drawingContext.shadowBlur = 0;
+
+            // Pure Chinese + English Labels
+            noStroke();
+            textAlign(CENTER, CENTER);
+            fill(30, 41, 59);
+            textSize(width * 0.022);
+            textStyle(BOLD);
+            text(card.foodData.nameZh, card.x + card.w / 2, card.y + card.h * 0.38);
+
+            fill(100, 116, 139);
+            textSize(width * 0.016);
+            textStyle(NORMAL);
+            text(card.foodData.nameEn, card.x + card.w / 2, card.y + card.h * 0.72);
+
+            pop();
+        }
+
+        // --- RESULTS & SCORE SCREEN (展示答案與綠框/紅框評分) ---
+        function drawResultScreen() {
+            push();
+
+            let totalTargets = TOTAL_QUESTIONS * TARGETS_PER_QUESTION; // 9 total matches
+            let totalCorrect = 0;
+
+            quizHistory.forEach(q => {
+                q.targets.forEach(t => {
+                    if (q.userAnswers[t.id] === t.id) {
+                        totalCorrect++;
+                    }
+                });
+            });
+
+            let finalScore = Math.round((totalCorrect / totalTargets) * 100);
+
+            // Container Box
+            fill(255);
+            stroke(245, 158, 11);
+            strokeWeight(4);
+            rect(width * 0.03, height * 0.03, width * 0.94, height * 0.94, 24);
+
+            // Title
+            noStroke();
+            textAlign(CENTER, TOP);
+            fill(180, 83, 9);
+            textSize(width * 0.042);
+            textStyle(BOLD);
+            text("🎉 測驗連線成績與解答 🏆", width / 2, height * 0.05);
+
+            // Total Score Badge
+            fill(254, 243, 199);
+            stroke(245, 158, 11);
+            strokeWeight(2);
+            rect(width * 0.22, height * 0.13, width * 0.56, height * 0.09, 14);
+
+            fill(180, 83, 9);
+            noStroke();
+            textSize(width * 0.026);
+            textAlign(CENTER, CENTER);
+            text(`總得分：${finalScore} 分  ( 正確答對 ${totalCorrect} / ${totalTargets} 題 )`, width / 2, height * 0.175);
+
+            // 3 Column Question Summary
+            let colW = width * 0.28;
+            let colH = height * 0.55;
+            let startX = width * 0.06;
+
+            for (let q = 0; q < TOTAL_QUESTIONS; q++) {
+                let cx = startX + q * (colW + width * 0.03);
+                let cy = height * 0.25;
+
+                fill(248, 250, 252);
+                stroke(226, 232, 240);
+                strokeWeight(2);
+                rect(cx, cy, colW, colH, 14);
+
+                fill(71, 85, 105);
+                noStroke();
+                textSize(width * 0.02);
+                textStyle(BOLD);
+                textAlign(CENTER, TOP);
+                text(`第 ${q + 1} 題解答`, cx + colW / 2, cy + 8);
+
+                let historyData = quizHistory[q];
+                let itemH = (colH - 42) / TARGETS_PER_QUESTION;
+
+                for (let i = 0; i < TARGETS_PER_QUESTION; i++) {
+                    let target = historyData.targets[i];
+                    let userChosenId = historyData.userAnswers[target.id];
+                    let isCorrect = (userChosenId === target.id);
+
+                    let iy = cy + 34 + i * itemH;
+
+                    push();
+                    // REQUIREMENTS MET: GREEN BORDER FOR CORRECT, RED BORDER FOR WRONG
+                    if (isCorrect) {
+                        fill(240, 253, 244);
+                        stroke(34, 197, 94); // Green Border
+                        strokeWeight(2.5);
+                    } else {
+                        fill(254, 242, 242);
+                        stroke(239, 68, 68); // Red Border
+                        strokeWeight(2.5);
+                    }
+                    rect(cx + 6, iy, colW - 12, itemH - 6, 10);
+
+                    // Draw miniature illustration
+                    target.draw(cx + 28, iy + (itemH - 6) / 2, itemH * 0.65);
+
+                    noStroke();
+                    textAlign(LEFT, CENTER);
+                    textSize(width * 0.015);
+                    textStyle(BOLD);
+                    fill(30, 41, 59);
+                    text(target.nameZh, cx + 52, iy + (itemH - 6) / 2 - 8);
+
+                    textSize(width * 0.012);
+                    fill(100, 116, 139);
+                    text(target.nameEn, cx + 52, iy + (itemH - 6) / 2 + 8);
+
+                    // Correct / Wrong Badge
+                    textAlign(RIGHT, CENTER);
+                    textSize(width * 0.014);
+                    textStyle(BOLD);
+                    if (isCorrect) {
+                        fill(22, 163, 74);
+                        text("✓ 正確", cx + colW - 10, iy + (itemH - 6) / 2);
+                    } else {
+                        fill(220, 38, 38);
+                        text("✕ 錯誤", cx + colW - 10, iy + (itemH - 6) / 2);
+                    }
+                    pop();
+                }
+            }
+
+            // Play Again Button
+            let btnW = width * 0.32;
+            let btnH = height * 0.1;
+            let btnX = width / 2 - btnW / 2;
+            let btnY = height * 0.84;
+
+            let isHover = mouseX > btnX && mouseX < btnX + btnW &&
+                          mouseY > btnY && mouseY < btnY + btnH;
+
+            fill(isHover ? 217 : 245, isHover ? 119 : 158, isHover ? 6 : 11);
+            stroke(180, 83, 9);
+            strokeWeight(3);
+            rect(btnX, btnY, btnW, btnH, 16);
+
+            fill(255);
+            noStroke();
+            textAlign(CENTER, CENTER);
+            textSize(width * 0.028);
+            textStyle(BOLD);
+            text("再試一次 Play Again 🔄", width / 2, btnY + btnH / 2);
+
+            pop();
+        }
+
+        // --- INTERACTION CONTROLS ---
+        function mousePressed() {
+            if (gameState === 'START') {
+                let btnW = width * 0.34;
+                let btnH = height * 0.13;
+                let btnX = width / 2 - btnW / 2;
+                let btnY = height * 0.68;
+
+                if (mouseX > btnX && mouseX < btnX + btnW &&
+                    mouseY > btnY && mouseY < btnY + btnH) {
+                    SoundFX.playClick();
+                    startNewGame();
+                }
+            } else if (gameState === 'PLAY') {
+                for (let i = draggableCards.length - 1; i >= 0; i--) {
+                    let card = draggableCards[i];
+                    if (mouseX >= card.x && mouseX <= card.x + card.w &&
+                        mouseY >= card.y && mouseY <= card.y + card.h) {
+
+                        draggedCard = card;
+                        card.isDragging = true;
+                        SoundFX.playClick();
+
+                        if (card.targetSlot) {
+                            card.targetSlot.assignedCardId = null;
+                            card.targetSlot = null;
+                        }
+                        break;
+                    }
+                }
+
+                // Submit Button Press
+                let assignedCount = draggableCards.filter(c => c.targetSlot !== null).length;
+                if (assignedCount === TARGETS_PER_QUESTION) {
+                    let btnW = width * 0.32;
+                    let btnH = height * 0.09;
+                    let btnX = width / 2 - btnW / 2;
+                    let btnY = height * 0.88;
+
+                    if (mouseX >= btnX && mouseX <= btnX + btnW &&
+                        mouseY >= btnY && mouseY <= btnY + btnH) {
+                        submitQuestion();
+                    }
+                }
+            } else if (gameState === 'RESULT') {
+                let btnW = width * 0.32;
+                let btnH = height * 0.1;
+                let btnX = width / 2 - btnW / 2;
+                let btnY = height * 0.84;
+
+                if (mouseX >= btnX && mouseX <= btnX + btnW &&
+                    mouseY >= btnY && mouseY <= btnY + btnH) {
+                    SoundFX.playClick();
+                    startNewGame();
+                }
+            }
+        }
+
+        function mouseDragged() {
+            if (gameState === 'PLAY' && draggedCard) {
+                draggedCard.x = mouseX - draggedCard.w / 2;
+                draggedCard.y = mouseY - draggedCard.h / 2;
+            }
+        }
+
+        function mouseReleased() {
+            if (gameState === 'PLAY' && draggedCard) {
+                draggedCard.isDragging = false;
+
+                let droppedInSlot = false;
+                for (let slot of targetSlots) {
+                    if (isOverlap(draggedCard, slot)) {
+                        // If slot already has another card, displace it back home
+                        if (slot.assignedCardId !== null && slot.assignedCardId !== draggedCard.id) {
+                            let prevCard = draggableCards.find(c => c.id === slot.assignedCardId);
+                            if (prevCard) {
+                                prevCard.targetSlot = null;
+                                prevCard.x = prevCard.homeX;
+                                prevCard.y = prevCard.homeY;
+                            }
+                        }
+
+                        draggedCard.targetSlot = slot;
+                        slot.assignedCardId = draggedCard.id;
+                        draggedCard.x = slot.x + (slot.w - draggedCard.w) / 2;
+                        draggedCard.y = slot.y + slot.h - 32;
+                        droppedInSlot = true;
+                        SoundFX.playClick();
+                        break;
+                    }
+                }
+
+                if (!droppedInSlot) {
+                    draggedCard.targetSlot = null;
+                    draggedCard.x = draggedCard.homeX;
+                    draggedCard.y = draggedCard.homeY;
+                }
+
+                draggedCard = null;
+            }
+        }
+
+        // Mobile Touch Listeners
+        function touchStarted() {
+            mousePressed();
+            return false;
+        }
+        function touchMoved() {
+            mouseDragged();
+            return false;
+        }
+        function touchEnded() {
+            mouseReleased();
+            return false;
+        }
+
+        // --- SUBMIT QUESTION ---
+        function submitQuestion() {
+            let qData = gameQuestionsData[currentQuestion - 1];
+            let userAnswersMap = {};
+
+            targetSlots.forEach(slot => {
+                userAnswersMap[slot.foodData.id] = slot.assignedCardId;
+            });
+
+            quizHistory.push({
+                questionNum: currentQuestion,
+                targets: qData.targets,
+                userAnswers: userAnswersMap
+            });
+
+            if (currentQuestion < TOTAL_QUESTIONS) {
+                currentQuestion++;
+                SoundFX.playClick();
+                initQuestion(currentQuestion);
+            } else {
+                // Game Over -> Calculate final result sounds
+                let totalTargets = TOTAL_QUESTIONS * TARGETS_PER_QUESTION;
+                let totalCorrect = 0;
+                quizHistory.forEach(q => {
+                    q.targets.forEach(t => {
+                        if (q.userAnswers[t.id] === t.id) totalCorrect++;
+                    });
+                });
+
+                if (totalCorrect >= totalTargets * 0.7) {
+                    SoundFX.playCorrect();
+                } else {
+                    SoundFX.playWrong();
+                }
+
+                gameState = 'RESULT';
+            }
+        }
+
+        // AABB Collision Detection
+        function isOverlap(r1, r2) {
+            return (
+                r1.x < r2.x + r2.w &&
+                r1.x + r1.w > r2.x &&
+                r1.y < r2.y + r2.h &&
+                r1.y + r1.h > r2.y
+            );
+        }
+
+        // Fisher-Yates Array Shuffle
+        function shuffleArray(array) {
+            let arr = [...array];
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
+        // Window Resizing
+        function windowResized() {
+            const container = document.getElementById('canvas-container');
+            const canvasWidth = Math.min(container.clientWidth, 960);
+            const canvasHeight = Math.round(canvasWidth * 0.65);
+            resizeCanvas(canvasWidth, canvasHeight);
+
+            if (gameState === 'PLAY') {
+                initQuestion(currentQuestion);
+            }
+        }
+    </script>
+</body>
+</html>
